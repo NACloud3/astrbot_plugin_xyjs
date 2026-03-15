@@ -56,8 +56,18 @@ class ZanaoZshPlugin(Star):
             return
 
         url = "https://api.app.zanao.com/thread/v2/list?with_reply=true&from_time=0&with_comment=true"
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers=self.headers)
+        
+        # 增加超时时间到 30 秒，防止校园网或者弱网环境导致 ConnectTimeout
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                resp = await client.get(url, headers=self.headers)
+            except httpx.ConnectTimeout:
+                logger.error("[XYJS] 请求校园集市接口超时 (ConnectTimeout)。请检查运行 AstrBot 的服务器/机器是否能够正常访问外网，或是否遭到 Zanao API 封禁。")
+                return
+            except Exception as e:
+                logger.error(f"[XYJS] 网络请求发生未捕获错误: {e}")
+                return
+                
             if resp.status_code != 200:
                 logger.error(f"[XYJS] 网络请求失败: HTTP {resp.status_code}")
                 return
