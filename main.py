@@ -175,6 +175,14 @@ class ZanaoZshPlugin(Star):
             
         # 如果命中了关键词，调用 LLM 进行深度意图分析
         try:
+            # 获取默认的 LLM Provider ID
+            provider = self.context.get_using_provider()
+            if not provider:
+                logger.error("[XYJS] 无法获取默认 LLM Provider，请检查 AstrBot 是否已配置大模型。")
+                return
+            provider_id = provider.meta().id
+            logger.info(f"[XYJS] 使用 LLM Provider: {provider_id}")
+            
             prompt = (
                 f"你是一个校园集市监控助手。有一个新帖子引起了用户的注意。\n"
                 f"【帖子详情】\n{post_text}\n"
@@ -185,10 +193,8 @@ class ZanaoZshPlugin(Star):
                 f'{{"match": true或false, "reason": "匹配或不匹配的原因", "summary": "如果匹配，请给出一句话概括这篇帖子的核心交易/咨询内容，否则留空"}}'
             )
             
-            # 获取用户所在平台的聊天提供商
-            umo = self.my_user_id  # 这里粗略地把 userid 作为 umo 使用。正常可能还需要 platform_id。如果是纯指令测试，可以在下文的 command 中拿
-            # 为了能在后台运行且不用 UMO，我们直接从 context 中拿默认的 LLM
             llm_resp = await self.context.llm_generate(
+                chat_provider_id=provider_id,
                 prompt=prompt,
             )
             
