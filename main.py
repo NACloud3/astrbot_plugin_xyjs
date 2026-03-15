@@ -28,15 +28,17 @@ class ZanaoZshPlugin(Star):
         
         # 严格伪装成微信小程序 PC 端
         self.headers = {
-            "Accept-Encoding": "gzip",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090c33)XWEB/14185",
+            "Accept-Encoding": "gzip, deflate, br",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) XWEB/18151",
             "X-Requested-With": "XMLHttpRequest",
             "X-Sc-Platform": "windows",
             "X-Sc-Cloud": "0",
-            "X-Sc-Appid": "wx3921ddb0258ff14f",
+            "X-Sc-Appid": "wxa16ce35c0ad1a203",
             "xweb_xhr": "1",
-            "X-Sc-Version": "3.4.4",
-            "X-Sc-Alias": "neu"
+            "X-Sc-Version": "4.1.2",
+            "X-Sc-Alias": "neu",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "*/*",
         }
         
     async def initialize(self):
