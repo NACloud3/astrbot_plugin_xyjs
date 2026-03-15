@@ -52,8 +52,11 @@ class ZanaoZshPlugin(Star):
         logger.info(f"[XYJS] 校园集市监控已启动，当前间隔为 {self.interval} 分钟。")
 
     async def check_loop(self):
+        # 首次启动等待 10 秒再开始第一次拉取，避免启动时服务尚未就绪
+        await asyncio.sleep(10)
         while self.is_running:
             try:
+                logger.info(f"[XYJS] 开始本轮校园集市帖子检查。当前订阅: {self.subscriptions}, 接收ID: {self.my_user_id}")
                 await self.fetch_and_check()
             except Exception as e:
                 logger.error(f"[XYJS] 拉取校园集市帖子失败: {e}\n{format_exc()}")
@@ -127,34 +130,48 @@ class ZanaoZshPlugin(Star):
             if not hasattr(self, "processed_post_ids"):
                 self.processed_post_ids = set()
 
+            new_count = 0
             for post in reversed(posts):
                 post_id = post.get("thread_id")
                 if post_id in self.processed_post_ids:
                     continue
                 
+                new_count += 1
+                title_preview = post.get("title", "")[:30]
+                logger.info(f"[XYJS] 发现新帖子 ID={post_id}, 标题: {title_preview}")
+                
                 # 开始检查订阅匹配
                 await self.process_post(post)
                 self.processed_post_ids.add(post_id)
+            
+            if new_count == 0:
+                logger.info("[XYJS] 本轮没有新帖子，全部已处理过。")
+            else:
+                logger.info(f"[XYJS] 本轮处理了 {new_count} 条新帖子。")
                 
     async def process_post(self, post: dict):
         if not self.my_user_id or not self.subscriptions:
-            return  # 用户没有配置接收 id 或订阅词，跳过
+            logger.debug("[XYJS] 跳过: 未配置 my_user_id 或无订阅。")
+            return
         
-        # 将帖子的核心内容拼接起来，便于检索和发给 LLM
-        thread_info = post.get("thread", {})
-        title = thread_info.get("title", "")
-        content = thread_info.get("content", "")
+        # 根据开源项目的数据结构，标题和内容直接在帖子顶层对象中
+        title = post.get("title", "")
+        content = post.get("content", "")
+        nickname = post.get("nickname", "")
         post_text = f"标题: {title}\n内容: {content}"
         
-        # 我们先进行一次粗筛：如果没有任何订阅关键词出现在文本中，直接忽略以节省 LLM 算力
+        # 粗筛：将每个订阅词作为整体进行包含检查
         matched_subs = []
         for sub in self.subscriptions:
-            # 简单粗暴的字面量包含检查（如果有更高级的需求也可以改完全交给 LLM）
-            if any(keyword in post_text for keyword in sub):
+            # 将订阅意图整体作为关键词匹配（比如 "外卖" 匹配包含"外卖"的帖子）
+            if sub in post_text:
                 matched_subs.append(sub)
                 
         if not matched_subs:
+            logger.debug(f"[XYJS] 帖子 '{title[:20]}' 未命中任何订阅词，跳过。")
             return
+        
+        logger.info(f"[XYJS] ✅ 帖子 '{title[:20]}' 命中订阅词: {matched_subs}，开始调用 LLM 分析...")
             
         # 如果命中了关键词，调用 LLM 进行深度意图分析
         try:
@@ -182,6 +199,7 @@ class ZanaoZshPlugin(Star):
                 result_text = result_text[3:-3]
                 
             llm_decision = json.loads(result_text)
+            logger.info(f"[XYJS] LLM 判定结果: match={llm_decision.get('match')}, reason={llm_decision.get('reason', 'N/A')}")
             
             if llm_decision.get("match") is True:
                 # 触发推送
