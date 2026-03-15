@@ -25,20 +25,25 @@ class ZanaoZshPlugin(Star):
         
         self.is_running = False
         self.task: asyncio.Task = None
+        
+        # 严格伪装成微信小程序 PC 端
         self.headers = {
             "Accept-Encoding": "gzip",
-            "User-Agent": "okhttp/4.10.0",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090c33)XWEB/14185",
             "X-Requested-With": "XMLHttpRequest",
-            "X-Sc-Platform": "Android",
-            "X-Sc-Client": "app",
-            "X-Sc-Version": "2.2.2",
+            "X-Sc-Platform": "windows",
+            "X-Sc-Cloud": "0",
+            "X-Sc-Appid": "wx3921ddb0258ff14f",
+            "xweb_xhr": "1",
+            "X-Sc-Version": "3.4.4",
             "X-Sc-Alias": "neu"
         }
         
     async def initialize(self):
         """可选择实现异步的插件初始化方法，当实例化该插件类之后会自动调用该方法。"""
         if self.token:
-            self.headers["X-Sc-Token"] = self.token
+            # api.x.zanao.com 需要由 X-Sc-Od 承载 Token
+            self.headers["X-Sc-Od"] = self.token
             
         self.is_running = True
         self.task = asyncio.create_task(self.check_loop())
@@ -71,7 +76,7 @@ class ZanaoZshPlugin(Star):
         if not self.token:
             return
 
-        # 换用突破封锁的 x 域名，而不是原来的 app 域名
+        # 换用突破封锁的 x 域名，并且改用 POST
         url = "https://api.x.zanao.com/thread/v2/list?with_reply=true&from_time=0&with_comment=true"
         self.update_dynamic_headers()
         
@@ -81,9 +86,10 @@ class ZanaoZshPlugin(Star):
         # 增加超时时间到 30 秒，防止校园网或者弱网环境导致 ConnectTimeout
         async with httpx.AsyncClient(timeout=30.0, proxy=proxies) as client:
             try:
-                resp = await client.get(url, headers=self.headers)
+                # 微信小程序接口普遍走 POST
+                resp = await client.post(url, headers=self.headers)
             except httpx.ConnectTimeout:
-                logger.error("[XYJS] 请求校园集市接口超时 (ConnectTimeout)。请检查运行 AstrBot 的服务器/机器是否能够正常访问外网，或是否遭到 Zanao API 封禁。")
+                logger.error("[XYJS] 请求校园集市接口超时 (ConnectTimeout)。请检查是否有海外 IP 被屏蔽，或者配置 HTTP 代理。")
                 return
             except Exception as e:
                 logger.error(f"[XYJS] 网络请求发生未捕获错误: {e}")
@@ -94,14 +100,26 @@ class ZanaoZshPlugin(Star):
                 return
             
             data = resp.json()
-            if data.get("code") != 200:
-                logger.error(f"[XYJS] API 业务报错: {data.get('msg')}")
+            # zanao x API 使用 errno, errcode 或直接判断
+            if data.get("errno", 0) != 0 or data.get("code", 200) != 200:
+                err_msg = data.get('errmsg') or data.get('msg') or str(data)
+                logger.error(f"[XYJS] API 业务报错: {err_msg}")
                 return
             
-            posts = data.get("data", {}).get("list", [])
-            logger.info(f"[XYJS] 成功拉取最新 {len(posts)} 条帖子数据。")
+            # 数据结构可能是 dict({"list": []}) 或者其他
+            posts_data = data.get("data", {})
+            if isinstance(posts_data, dict):
+                posts = posts_data.get("list", [])
+            elif isinstance(posts_data, list):
+                posts = posts_data
+            else:
+                posts = []
+
             if not posts:
+                logger.warning("[XYJS] 获取到的帖子列表为空 (返回了空数组)。如果您看到此提示，极有可能是您的 Token (原为 App Token) 在小程序接口上无效，或者您的 Token 已过期。请立刻前往【校园集市-微信小程序版】重新抓包获取 `X-Sc-Od` 的值，并在配置中替换原来的 Token！")
                 return
+                
+            logger.info(f"[XYJS] 成功拉取最新 {len(posts)} 条帖子数据。")
             
             # 使用集合保存已经处理过的帖子 ID 以免重复推送
             if not hasattr(self, "processed_post_ids"):
