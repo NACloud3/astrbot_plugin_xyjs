@@ -241,13 +241,16 @@ class ZanaoZshPlugin(Star):
         self.subscriptions.append(keyword)
         self.config["subscriptions"] = self.subscriptions
         self.config.save_config()
-        # 顺便自动将当前用户的 ID 设为接收 ID
-        if not self.my_user_id:
-            self.my_user_id = event.get_sender_id()
+        # 自动将当前用户的完整 session 设为接收目标（格式: platform_id:message_type:session_id）
+        # 如果之前存的是旧格式（纯 sender_id，不含 ':'），也需要强制更新
+        current_session = str(event.session)
+        if not self.my_user_id or ':' not in self.my_user_id:
+            self.my_user_id = current_session
             self.config["my_user_id"] = self.my_user_id
             self.config.save_config()
+            logger.info(f"[XYJS] 已绑定推送目标 Session: {self.my_user_id}")
             
-        yield event.plain_result(f"成功订阅校园集市意图：'{keyword}'！\n目前如果接收到相关的帖子，会向 ID: {self.my_user_id} 发送推送。")
+        yield event.plain_result(f"成功订阅校园集市意图：'{keyword}'！\n目前如果接收到相关的帖子，会向 Session: {self.my_user_id} 发送推送。")
 
     @filter.command("xy_unsub")
     async def cmd_xy_unsub(self, event: AstrMessageEvent, keyword: str):
