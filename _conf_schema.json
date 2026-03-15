@@ -5,6 +5,11 @@
         "hint": "抓包获取校园集市(Zanao) API 的 X-Sc-Token 请求头的值，需要填入以便插件能够拉取数据。",
         "obvious_hint": true
     },
+    "proxy": {
+        "description": "HTTP 代理地址 (可选)",
+        "type": "string",
+        "hint": "如果服务器访问校园集市超时连不上，可在此填写网络代理（如 http://127.0.0.1:7890）。若不需要请留空。"
+    },
     "interval_minutes": {
         "description": "检查频率（分钟）",
         "type": "int",

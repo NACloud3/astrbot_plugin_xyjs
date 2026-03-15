@@ -18,6 +18,7 @@ class ZanaoZshPlugin(Star):
         self.interval = self.config.get("interval_minutes", 10)
         self.my_user_id = self.config.get("my_user_id", "")
         self.subscriptions = self.config.get("subscriptions", [])
+        self.proxy = self.config.get("proxy", "")
         
         self.is_running = False
         self.task: asyncio.Task = None
@@ -57,8 +58,11 @@ class ZanaoZshPlugin(Star):
 
         url = "https://api.app.zanao.com/thread/v2/list?with_reply=true&from_time=0&with_comment=true"
         
+        # 支持用户配置代理
+        proxies = self.proxy if self.proxy else None
+
         # 增加超时时间到 30 秒，防止校园网或者弱网环境导致 ConnectTimeout
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, proxy=proxies) as client:
             try:
                 resp = await client.get(url, headers=self.headers)
             except httpx.ConnectTimeout:
