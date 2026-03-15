@@ -1,6 +1,9 @@
 import asyncio
 import json
 import httpx
+import time
+import random
+import hashlib
 from typing import List
 from traceback import format_exc
 
@@ -18,6 +21,7 @@ class ZanaoZshPlugin(Star):
         self.interval = self.config.get("interval_minutes", 10)
         self.my_user_id = self.config.get("my_user_id", "")
         self.subscriptions = self.config.get("subscriptions", [])
+        self.proxy = self.config.get("proxy", "")
         
         self.is_running = False
         self.task: asyncio.Task = None
@@ -51,14 +55,31 @@ class ZanaoZshPlugin(Star):
             interval = max(1, self.config.get("interval_minutes", 10))
             await asyncio.sleep(interval * 60)
             
+    def update_dynamic_headers(self):
+        alias = self.headers.get("X-Sc-Alias", "neu")
+        m = "".join(str(random.randint(0, 9)) for _ in range(20))
+        td = int(time.time())
+        # X-Sc-Ah 的签名算法特征串
+        sign_string = f"{alias}_{m}_{td}_1b6d2514354bc407afdd935f45521a8c"
+        sign_md5 = hashlib.md5(sign_string.encode('utf-8')).hexdigest()
+        
+        self.headers["X-Sc-Nd"] = m
+        self.headers["X-Sc-Td"] = str(td)
+        self.headers["X-Sc-Ah"] = sign_md5
+
     async def fetch_and_check(self):
         if not self.token:
             return
 
-        url = "https://api.app.zanao.com/thread/v2/list?with_reply=true&from_time=0&with_comment=true"
+        # 换用突破封锁的 x 域名，而不是原来的 app 域名
+        url = "https://api.x.zanao.com/thread/v2/list?with_reply=true&from_time=0&with_comment=true"
+        self.update_dynamic_headers()
         
+        # 支持用户配置代理
+        proxies = self.proxy if self.proxy else None
+
         # 增加超时时间到 30 秒，防止校园网或者弱网环境导致 ConnectTimeout
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, proxy=proxies) as client:
             try:
                 resp = await client.get(url, headers=self.headers)
             except httpx.ConnectTimeout:
