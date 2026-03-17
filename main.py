@@ -259,6 +259,33 @@ class ZanaoXYJSPlugin(Star):
 
     # ──────────────── 用户指令 ────────────────
 
+    @filter.command("xy")
+    async def cmd_xy_help(self, event: AstrMessageEvent):
+        """校园集市插件帮助。"""
+        yield event.plain_result(
+            "📚 校园集市插件 (XYJS) 帮助\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "📌 指令列表：\n"
+            "  /xybind <学校代码> <Token>\n"
+            "    绑定您的学校和 Token\n"
+            "  /xysub <关键词>\n"
+            "    订阅关键词（需先绑定）\n"
+            "  /xyunsub <关键词>\n"
+            "    取消订阅\n"
+            "  /xylist\n"
+            "    查看绑定信息和订阅列表\n"
+            "\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            "🔑 Token 获取方式：\n"
+            "  1. 在电脑上打开微信，搜索并打开「校园集市」小程序\n"
+            "  2. 使用抓包工具（如 Charles / Fiddler）\n"
+            "  3. 在小程序中随意浏览，找到发往 api.x.zanao.com 的请求\n"
+            "  4. 复制请求头中 X-Sc-Od 的值 → 这就是 Token\n"
+            "  5. 复制请求头中 X-Sc-Alias 的值 → 这就是学校代码\n"
+            "\n"
+            "💡 示例：/xybind neu ZjdmVWs3Vm1n..."
+        )
+
     @filter.command("xybind")
     async def cmd_xybind(self, event: AstrMessageEvent, args: str):
         """绑定学校代码和 Token。用法: /xybind <学校代码> <Token>
