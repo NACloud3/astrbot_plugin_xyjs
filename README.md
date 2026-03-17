@@ -1,14 +1,85 @@
-# astrbot-plugin-helloworld
+# 🏪 AstrBot 校园集市插件 (XYJS)
 
-AstrBot 插件模板 / A template plugin for AstrBot plugin feature
+校园集市 (Zanao) 智能订阅推送插件，支持多学校、多用户，基于 LLM 意图分析实现精准推送。
 
-> [!NOTE]
-> This repo is just a template of [AstrBot](https://github.com/AstrBotDevs/AstrBot) Plugin.
-> 
-> [AstrBot](https://github.com/AstrBotDevs/AstrBot) is an agentic assistant for both personal and group conversations. It can be deployed across dozens of mainstream instant messaging platforms, including QQ, Telegram, Feishu, DingTalk, Slack, LINE, Discord, Matrix, etc. In addition, it provides a reliable and extensible conversational AI infrastructure for individuals, developers, and teams. Whether you need a personal AI companion, an intelligent customer support agent, an automation assistant, or an enterprise knowledge base, AstrBot enables you to quickly build AI applications directly within your existing messaging workflows.
+## ✨ 功能特性
 
-# Supports
+- 🏫 **多学校支持** — 每个用户自行绑定学校代码和 Token，不同学校互不干扰
+- 👥 **多用户隔离** — 每个用户/群的订阅完全独立
+- 🤖 **LLM 智能分析** — 关键词粗筛后调用大模型深度判断帖子是否真正匹配用户意图
+- 🔔 **自动推送** — 匹配成功后自动推送到用户所在的聊天会话
+- 🔒 **动态签名** — 自动生成 `X-Sc-Ah` 签名，无需手动维护
 
-- [AstrBot Repo](https://github.com/AstrBotDevs/AstrBot)
-- [AstrBot Plugin Development Docs (Chinese)](https://docs.astrbot.app/dev/star/plugin-new.html)
-- [AstrBot Plugin Development Docs (English)](https://docs.astrbot.app/en/dev/star/plugin-new.html)
+## 📦 安装
+
+在 AstrBot 管理面板中，通过 GitHub 仓库地址安装：
+
+```
+https://github.com/NACloud3/astrbot_plugin_xyjs
+```
+
+## 🚀 快速上手
+
+### 1. 获取 Token
+
+1. 在电脑上打开**微信**，搜索并打开「**校园集市**」小程序
+2. 使用抓包工具（Charles / Fiddler / mitmproxy）
+3. 在小程序中随意浏览，找到发往 `api.x.zanao.com` 的请求
+4. 记下请求头中的两个值：
+   - `X-Sc-Alias` → **学校代码**（如 `neu`）
+   - `X-Sc-Od` → **Token**
+
+### 2. 绑定学校
+
+在聊天中发送：
+
+```
+/xybind <学校代码> <Token>
+```
+
+示例：
+```
+/xybind neu ZjdmVWs3Vm1nWk93dVlPOGsy...
+```
+
+### 3. 添加订阅
+
+```
+/xysub 外卖
+/xysub 二手手机
+```
+
+搞定！当校园集市出现包含关键词的新帖子时，LLM 会自动分析并推送通知。
+
+## 📌 指令一览
+
+| 指令 | 说明 | 示例 |
+|------|------|------|
+| `/xy` | 查看帮助 | `/xy` |
+| `/xybind` | 绑定学校代码和 Token | `/xybind neu ZjdmVWs3...` |
+| `/xysub` | 订阅关键词 | `/xysub 外卖` |
+| `/xyunsub` | 取消订阅 | `/xyunsub 外卖` |
+| `/xylist` | 查看绑定信息和订阅 | `/xylist` |
+
+## ⚙️ 管理面板配置
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| HTTP 代理地址 | 服务器无法访问 API 时填写代理 | 空 |
+| 检查频率（分钟） | 多久检查一次新帖子 | 10 |
+
+## 🔧 工作原理
+
+```
+定时拉取帖子 → 按学校分组请求 API → 关键词粗筛
+    → LLM 深度意图分析 → 匹配成功 → 推送到用户会话
+```
+
+1. 插件按配置的间隔定时拉取各学校的最新帖子
+2. 将帖子内容与每个用户的订阅关键词进行粗筛匹配
+3. 命中关键词后，调用 AstrBot 配置的 LLM 进行深度意图分析（避免误推送）
+4. LLM 确认匹配后，自动推送通知到用户所在的聊天会话
+
+## 📄 许可证
+
+MIT License
