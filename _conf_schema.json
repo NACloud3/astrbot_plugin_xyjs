@@ -1,8 +1,8 @@
 {
     "token": {
-        "description": "Zanao Token (X-Sc-Token)",
+        "description": "校园集市 Token (X-Sc-Od)",
         "type": "string",
-        "hint": "抓包获取校园集市(Zanao) API 的 X-Sc-Token 请求头的值，需要填入以便插件能够拉取数据。",
+        "hint": "在微信小程序版校园集市中抓包获取 X-Sc-Od 请求头的值。",
         "obvious_hint": true
     },
     "proxy": {
@@ -15,16 +15,5 @@
         "type": "int",
         "default": 10,
         "hint": "每隔多少分钟去检查一次新帖子"
-    },
-    "my_user_id": {
-         "description": "推送目标 ID (群号或 QQ 号)",
-         "type": "string",
-         "hint": "只有符合条件的帖子，才会主动推送到这个 ID。"
-    },
-    "subscriptions": {
-        "description": "我的订阅列表",
-        "type": "list",
-        "default": [],
-        "hint": "您的订阅意图列表。例如填写：想买个二手显示器；或者：寻物启事，找校卡。"
     }
 }
