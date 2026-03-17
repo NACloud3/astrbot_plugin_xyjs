@@ -1,10 +1,4 @@
 {
-    "token": {
-        "description": "校园集市 Token (X-Sc-Od)",
-        "type": "string",
-        "hint": "在微信小程序版校园集市中抓包获取 X-Sc-Od 请求头的值。",
-        "obvious_hint": true
-    },
     "proxy": {
         "description": "HTTP 代理地址 (可选)",
         "type": "string",
