@@ -287,24 +287,12 @@ class ZanaoXYJSPlugin(Star):
         )
 
     @filter.command("xybind")
-    async def cmd_xybind(self, event: AstrMessageEvent, args: str):
+    async def cmd_xybind(self, event: AstrMessageEvent, alias: str, token: str):
         """绑定学校代码和 Token。用法: /xybind <学校代码> <Token>
         
         学校代码示例: neu(东北大学)、scu(四川大学)、pku(北京大学) 等。
         Token: 微信小程序版校园集市抓包获取的 X-Sc-Od 值。"""
-        parts = args.strip().split(None, 1)
-        if len(parts) < 2:
-            yield event.plain_result(
-                "❌ 格式错误！\n"
-                "用法: /xybind <学校代码> <Token>\n"
-                "示例: /xybind neu ZjdmVWs3Vm1n...\n\n"
-                "学校代码就是抓包时 X-Sc-Alias 的值（如 neu、scu 等）。\n"
-                "Token 是 X-Sc-Od 的值。"
-            )
-            return
-
-        alias = parts[0].strip().lower()
-        token = parts[1].strip()
+        alias = alias.strip().lower()
 
         session_str = str(event.session)
         if session_str not in self.user_data:
