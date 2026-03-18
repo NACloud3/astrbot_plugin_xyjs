@@ -1,6 +1,6 @@
 import asyncio
 import json
-import os
+import re
 import httpx
 import time
 import random
@@ -8,13 +8,14 @@ import hashlib
 from traceback import format_exc
 
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, StarTools, register
 from astrbot.api import logger
 from astrbot.api.all import AstrBotConfig
 
 SUBS_FILENAME = "user_subs.json"
+PROCESSED_FILENAME = "processed_ids.json"
 
-@register("xyjs", "NACloud3", "校园集市(Zanao)自定义意图订阅推送插件。", "2.1.0")
+@register("astrbot_plugin_xyjs", "NACloud3", "校园集市自定义意图订阅推送插件，支持多学校", "2.2.0")
 class ZanaoXYJSPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -24,40 +25,77 @@ class ZanaoXYJSPlugin(Star):
 
         self.is_running = False
         self.task: asyncio.Task = None
-        self.processed_post_ids: dict[str, set] = {}  # 每个 alias+token 组合各自的已处理集
+
+        # 使用框架规范目录 data/plugin_data/astrbot_plugin_xyjs/
+        self._data_dir = StarTools.get_data_dir("astrbot_plugin_xyjs")
+        self._subs_path = self._data_dir / SUBS_FILENAME
+        self._processed_path = self._data_dir / PROCESSED_FILENAME
 
         # 多用户数据: { session_str: { "alias": "neu", "token": "xxx", "subs": [...] } }
         self.user_data: dict[str, dict] = {}
-        self._subs_path = os.path.join(os.path.dirname(__file__), SUBS_FILENAME)
         self._load_data()
+
+        # 每个 alias+token 组合各自的已处理帖子 ID 集
+        self.processed_post_ids: dict[str, set] = {}
+        self._load_processed()
 
     # ──────────────── 数据持久化 ────────────────
 
     def _load_data(self):
-        if os.path.exists(self._subs_path):
+        """加载多用户订阅数据。"""
+        if self._subs_path.exists():
             try:
-                with open(self._subs_path, "r", encoding="utf-8") as f:
-                    raw = json.load(f)
-                # 兼容 v2.0.0 旧格式 { session: ["kw1",...] }
+                raw = json.loads(self._subs_path.read_text("utf-8"))
                 for k, v in raw.items():
                     if isinstance(v, list):
-                        # 旧格式：迁移为新格式，alias/token 留空等用户重新绑定
                         self.user_data[k] = {"alias": "", "token": "", "subs": v}
                     elif isinstance(v, dict):
                         self.user_data[k] = v
                 logger.info(f"[XYJS] 已加载 {len(self.user_data)} 个用户的数据。")
+            except json.JSONDecodeError:
+                logger.error("[XYJS] user_subs.json 格式损坏，已重置。")
+                self.user_data = {}
+            except PermissionError:
+                logger.error("[XYJS] 无权读取 user_subs.json。")
+                self.user_data = {}
             except Exception as e:
-                logger.error(f"[XYJS] 加载数据文件失败: {e}")
+                logger.error(f"[XYJS] 加载数据文件失败 ({type(e).__name__}): {e}")
                 self.user_data = {}
         else:
             self.user_data = {}
 
     def _save_data(self):
+        """保存多用户订阅数据。"""
         try:
-            with open(self._subs_path, "w", encoding="utf-8") as f:
-                json.dump(self.user_data, f, ensure_ascii=False, indent=2)
+            self._subs_path.write_text(
+                json.dumps(self.user_data, ensure_ascii=False, indent=2), "utf-8"
+            )
         except Exception as e:
             logger.error(f"[XYJS] 保存数据文件失败: {e}")
+
+    def _load_processed(self):
+        """加载已处理帖子 ID（防重启后重复推送）。"""
+        if self._processed_path.exists():
+            try:
+                raw = json.loads(self._processed_path.read_text("utf-8"))
+                self.processed_post_ids = {k: set(v) for k, v in raw.items()}
+                total = sum(len(v) for v in self.processed_post_ids.values())
+                logger.info(f"[XYJS] 已加载 {total} 条已处理帖子记录。")
+            except Exception as e:
+                logger.error(f"[XYJS] 加载已处理记录失败: {e}")
+                self.processed_post_ids = {}
+        else:
+            self.processed_post_ids = {}
+
+    def _save_processed(self):
+        """保存已处理帖子 ID（每组仅保留最近 100 条，控制文件体积）。"""
+        try:
+            trimmed = {k: list(v)[-100:] for k, v in self.processed_post_ids.items()}
+            self._processed_path.write_text(
+                json.dumps(trimmed, ensure_ascii=False), "utf-8"
+            )
+        except Exception as e:
+            logger.error(f"[XYJS] 保存已处理记录失败: {e}")
 
     # ──────────────── 生命周期 ────────────────
 
@@ -71,6 +109,7 @@ class ZanaoXYJSPlugin(Star):
         self.is_running = False
         if self.task:
             self.task.cancel()
+        self._save_processed()
         logger.info("[XYJS] 校园集市监控已停止。")
 
     # ──────────────── 签名与请求 ────────────────
@@ -116,7 +155,6 @@ class ZanaoXYJSPlugin(Star):
 
     async def fetch_all_schools(self):
         """按学校+Token 分组拉取帖子，然后分别匹配对应用户的订阅。"""
-        # 分组: key=(alias, token), value=[(session_str, subs), ...]
         groups: dict[tuple[str, str], list[tuple[str, list[str]]]] = {}
         for session_str, data in self.user_data.items():
             alias = data.get("alias", "")
@@ -138,22 +176,33 @@ class ZanaoXYJSPlugin(Star):
             for (alias, token), user_list in groups.items():
                 await self.fetch_and_match(client, alias, token, user_list)
 
+        # 每轮结束后持久化已处理 ID
+        self._save_processed()
+
     async def fetch_and_match(self, client: httpx.AsyncClient, alias: str, token: str, user_list: list):
-        """拉取某个学校的帖子并匹配用户订阅。"""
+        """拉取某个学校的帖子并匹配用户订阅（含超时重试）。"""
         url = "https://api.x.zanao.com/thread/v2/list?with_reply=true&from_time=0&with_comment=true"
         headers = self._build_headers(alias, token)
 
-        try:
-            resp = await client.post(url, headers=headers)
-        except httpx.ConnectTimeout:
-            logger.error(f"[XYJS] [{alias}] 请求超时。")
-            return
-        except Exception as e:
-            logger.error(f"[XYJS] [{alias}] 请求错误: {e}")
-            return
+        # 网络重试：最多尝试 2 次
+        resp = None
+        for attempt in range(2):
+            try:
+                resp = await client.post(url, headers=headers)
+                break
+            except httpx.ConnectTimeout:
+                if attempt == 1:
+                    logger.error(f"[XYJS] [{alias}] 连续 2 次超时，跳过本轮。")
+                    return
+                logger.warning(f"[XYJS] [{alias}] 超时，5 秒后重试...")
+                await asyncio.sleep(5)
+                headers = self._build_headers(alias, token)  # 重新生成签名
+            except Exception as e:
+                logger.error(f"[XYJS] [{alias}] 请求错误: {e}")
+                return
 
-        if resp.status_code != 200:
-            logger.error(f"[XYJS] [{alias}] HTTP {resp.status_code}")
+        if resp is None or resp.status_code != 200:
+            logger.error(f"[XYJS] [{alias}] HTTP {resp.status_code if resp else 'N/A'}")
             return
 
         data = resp.json()
@@ -171,7 +220,6 @@ class ZanaoXYJSPlugin(Star):
 
         logger.info(f"[XYJS] [{alias}] 成功拉取 {len(posts)} 条帖子。")
 
-        # 每个 alias+token 组合有独立的已处理集合
         group_key = f"{alias}:{token[:8]}"
         if group_key not in self.processed_post_ids:
             self.processed_post_ids[group_key] = set()
@@ -190,7 +238,6 @@ class ZanaoXYJSPlugin(Star):
 
             logger.info(f"[XYJS] [{alias}] 新帖 ID={post_id}: {title[:30]}")
 
-            # 遍历此组下每个用户的订阅
             for session_str, subs in user_list:
                 matched = [s for s in subs if s in post_text]
                 if matched:
@@ -230,15 +277,20 @@ class ZanaoXYJSPlugin(Star):
             )
 
             result_text = llm_resp.completion_text.strip()
-            if result_text.startswith("```json"):
-                result_text = result_text[7:]
-            if result_text.startswith("```"):
-                result_text = result_text[3:]
-            if result_text.endswith("```"):
-                result_text = result_text[:-3]
-            result_text = result_text.strip()
 
-            llm_decision = json.loads(result_text)
+            # 使用正则提取 JSON 对象，兼容 LLM 各种格式输出
+            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+            if not json_match:
+                logger.warning(f"[XYJS] LLM 返回无法解析的内容: {result_text[:200]}")
+                return
+            json_str = json_match.group(0)
+
+            try:
+                llm_decision = json.loads(json_str)
+            except json.JSONDecodeError as je:
+                logger.error(f"[XYJS] LLM JSON 解析失败: {je}\n原始内容: {result_text[:300]}")
+                return
+
             logger.info(f"[XYJS] LLM 判定: match={llm_decision.get('match')}, reason={llm_decision.get('reason', 'N/A')}")
 
             if llm_decision.get("match") is True:
@@ -254,6 +306,8 @@ class ZanaoXYJSPlugin(Star):
                 await self.context.send_message(session_str, chain)
                 logger.info(f"[XYJS] 已向 {session_str[:30]} 推送。")
 
+        except json.JSONDecodeError:
+            pass  # 已在上方处理
         except Exception as e:
             logger.error(f"[XYJS] LLM 分析或推送出错: {e}")
 
@@ -288,10 +342,7 @@ class ZanaoXYJSPlugin(Star):
 
     @filter.command("xybind")
     async def cmd_xybind(self, event: AstrMessageEvent, alias: str, token: str):
-        """绑定学校代码和 Token。用法: /xybind <学校代码> <Token>
-        
-        学校代码示例: neu(东北大学)、scu(四川大学)、pku(北京大学) 等。
-        Token: 微信小程序版校园集市抓包获取的 X-Sc-Od 值。"""
+        """绑定学校代码和 Token。用法: /xybind <学校代码> <Token>"""
         alias = alias.strip().lower()
 
         session_str = str(event.session)
